@@ -1,0 +1,8 @@
+[package]
+name = "fly"
+version = "0.1.0"
+authors = ["Tom Palmer <tjpalmer@tjpalmer.com>"]
+edition = "2018"
+
+[dependencies]
+rouille = "3.0.0"
