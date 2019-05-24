@@ -5,4 +5,5 @@ authors = ["Tom Palmer <tjpalmer@tjpalmer.com>"]
 edition = "2018"
 
 [dependencies]
+openssl = "0.10.23"
 rouille = "3.0.0"
