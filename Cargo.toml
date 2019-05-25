@@ -5,9 +5,13 @@ authors = ["Tom Palmer <tjpalmer@tjpalmer.com>"]
 edition = "2018"
 
 [dependencies]
+dirs = "1.0.5"
+failure = "0.1.5"
 futures = "0.1.27"
 hyper = "0.12.29"
 hyper-rustls = "0.16.1"
+rcgen = "0.3.0"
+ring = "0.14.6"
 rustls = "0.15.2"
 tokio = "0.1.20"
 tokio-rustls = "0.9.3"

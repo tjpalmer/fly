@@ -4,35 +4,85 @@
 //! Certificate and private key are hardcoded to sample files.
 #![deny(warnings)]
 
+extern crate dirs;
+extern crate failure;
 extern crate futures;
 extern crate hyper;
+extern crate rcgen;
+extern crate ring;
 extern crate rustls;
 extern crate tokio;
 extern crate tokio_rustls;
 extern crate tokio_tcp;
 
+use failure::Error;
 use futures::future;
 use futures::Stream;
 use hyper::rt::Future;
 use hyper::service::service_fn;
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use rcgen::{Certificate, CertificateParams};
+use ring::rand::SecureRandom;
 use rustls::internal::pemfile;
 use std::{env, fs, io, sync};
+use std::io::prelude::*;
+use std::path::{Path, PathBuf};
 use tokio_rustls::TlsAcceptor;
 
-fn main() {
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt};
+
+struct CertPair {
+    cert_path: PathBuf,
+    key_path: PathBuf,
+}
+
+fn main() -> Result<(), Error> {
+    let cert_pair = create_certs()?;
     // Serve an echo service over HTTPS, with proper error handling.
-    if let Err(e) = run_server() {
+    if let Err(e) = run_server(&cert_pair) {
         eprintln!("FAILED: {}", e);
         std::process::exit(1);
     }
+    Ok(())
+}
+
+fn write_secret<P: AsRef<Path>>(path: P, buf: &[u8]) -> Result<(), Error> {
+    let mut options = fs::OpenOptions::new();
+    options.create_new(true);
+    #[cfg(unix)] options.mode(0o600);
+    options.write(true);
+    let mut stream = options.open(path)?;
+    stream.write_all(buf)?;
+    Ok(())
+}
+
+fn create_certs() -> Result<CertPair, Error> {
+    let dir = dirs::data_local_dir().unwrap().join("fly");
+    let cert_path = dir.join("cert.pem");
+    let key_path = dir.join("cert-key.pem");
+    if !(cert_path.exists() && key_path.exists()) {
+        if !dir.exists() {
+            fs::create_dir_all(&dir)?
+        }
+        println!("{}", cert_path.to_str().unwrap());
+        let mut params = CertificateParams::default();
+        let mut bytes: [u8; 8] = [0; 8];
+        ring::rand::SystemRandom::new().fill(&mut bytes)?;
+        params.serial_number = Some(u64::from_ne_bytes(bytes));
+        let cert = Certificate::from_params(params);
+        fs::File::create(&cert_path)?
+            .write_all(cert.serialize_pem().as_bytes())?;
+        write_secret(&key_path, cert.serialize_private_key_pem().as_bytes())?;
+    }
+    Ok(CertPair{cert_path, key_path})
 }
 
 fn error(err: String) -> io::Error {
     io::Error::new(io::ErrorKind::Other, err)
 }
 
-fn run_server() -> io::Result<()> {
+fn run_server(cert_pair: &CertPair) -> io::Result<()> {
     // First parameter is port number (optional, defaults to 1337)
     let port = match env::args().nth(1) {
         Some(ref p) => p.to_owned(),
@@ -43,11 +93,12 @@ fn run_server() -> io::Result<()> {
         .map_err(|e| error(format!("{}", e)))?;
 
     // Build TLS configuration.
+    // TODO How to make certs?
     let tls_cfg = {
         // Load public certificate.
-        let certs = load_certs("src/cert.pem")?;
+        let certs = load_certs(&cert_pair.cert_path)?;
         // Load private key.
-        let key = load_private_key("src/key.pem")?;
+        let key = load_private_key(&cert_pair.key_path)?;
         // Do not use client certificate authentication.
         let mut cfg = rustls::ServerConfig::new(rustls::NoClientAuth::new());
         // Select a certificate to use.
@@ -65,7 +116,10 @@ fn run_server() -> io::Result<()> {
         .then(|r| match r {
             Ok(x) => Ok::<_, io::Error>(Some(x)),
             Err(_e) => {
-                // println!("[!] Voluntary server halt due to client-connection error...");
+                // println!(concat!(
+                //     "[!] Voluntary server halt due to ",
+                //     "client-connection error ...",
+                // ));
                 // Errors could be handled here, instead of server aborting.
                 Ok(None)
                 // Err(_e)
@@ -84,7 +138,8 @@ fn run_server() -> io::Result<()> {
 }
 
 // Future result: either a hyper body or an error.
-type ResponseFuture = Box<Future<Item = Response<Body>, Error = hyper::Error> + Send>;
+type ResponseFuture =
+    Box<Future<Item = Response<Body>, Error = hyper::Error> + Send>;
 
 // Custom echo service, handling two different routes and a
 // catch-all 404 responder.
@@ -108,10 +163,14 @@ fn echo(req: Request<Body>) -> ResponseFuture {
 }
 
 // Load public certificate from file.
-fn load_certs(filename: &str) -> io::Result<Vec<rustls::Certificate>> {
+fn load_certs<P: AsRef<Path>>(filename: P)
+    -> io::Result<Vec<rustls::Certificate>>
+{
     // Open certificate file.
-    let certfile = fs::File::open(filename).map_err(|e| {
-        error(format!("failed to open {}: {}", filename, e))
+    let certfile = fs::File::open(&filename).map_err(|e| {
+        error(format!(
+            "failed to open {}: {}", filename.as_ref().to_str().unwrap(), e,
+        ))
     })?;
     let mut reader = io::BufReader::new(certfile);
 
@@ -121,15 +180,19 @@ fn load_certs(filename: &str) -> io::Result<Vec<rustls::Certificate>> {
 }
 
 // Load private key from file.
-fn load_private_key(filename: &str) -> io::Result<rustls::PrivateKey> {
+fn load_private_key<P: AsRef<Path>>(filename: P)
+    -> io::Result<rustls::PrivateKey>
+{
     // Open keyfile.
-    let keyfile = fs::File::open(filename).map_err(|e| {
-        error(format!("failed to open {}: {}", filename, e))
+    let keyfile = fs::File::open(&filename).map_err(|e| {
+        error(format!(
+            "failed to open {}: {}", filename.as_ref().to_str().unwrap(), e,
+        ))
     })?;
     let mut reader = io::BufReader::new(keyfile);
 
     // Load and return a single private key.
-    let keys = pemfile::rsa_private_keys(&mut reader)
+    let keys = pemfile::pkcs8_private_keys(&mut reader)
         .map_err(|_| error("failed to load private key".into()))?;
     if keys.len() != 1 {
         return Err(error("expected a single private key".into()));
