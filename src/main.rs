@@ -4,40 +4,18 @@
 //! Certificate and private key are hardcoded to sample files.
 #![deny(warnings)]
 
-extern crate dirs;
-extern crate failure;
-extern crate futures;
-extern crate hyper;
-extern crate rcgen;
-extern crate ring;
-extern crate rustls;
-extern crate tokio;
-extern crate tokio_rustls;
-extern crate tokio_tcp;
+mod fly;
 
-use failure::Error;
-use futures::future;
-use futures::Stream;
-use hyper::rt::Future;
-use hyper::service::service_fn;
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use rcgen::{Certificate, CertificateParams};
-use ring::rand::SecureRandom;
-use rustls::internal::pemfile;
-use std::{env, fs, io, sync};
-use std::io::prelude::*;
-use std::path::{Path, PathBuf};
+use fly::*;
+use futures::{Stream, future};
+use hyper::{
+    Body, Method, Request, Response, Server, StatusCode,
+    rt::Future, service::service_fn,
+};
+use std::{env, io, sync};
 use tokio_rustls::TlsAcceptor;
 
-#[cfg(unix)]
-use std::os::unix::fs::{OpenOptionsExt};
-
-struct CertPair {
-    cert_path: PathBuf,
-    key_path: PathBuf,
-}
-
-fn main() -> Result<(), Error> {
+fn main() -> Try {
     let cert_pair = create_certs()?;
     // Serve an echo service over HTTPS, with proper error handling.
     if let Err(e) = run_server(&cert_pair) {
@@ -47,42 +25,7 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn write_secret<P: AsRef<Path>>(path: P, buf: &[u8]) -> Result<(), Error> {
-    let mut options = fs::OpenOptions::new();
-    options.create_new(true);
-    #[cfg(unix)] options.mode(0o600);
-    options.write(true);
-    let mut stream = options.open(path)?;
-    stream.write_all(buf)?;
-    Ok(())
-}
-
-fn create_certs() -> Result<CertPair, Error> {
-    let dir = dirs::data_local_dir().unwrap().join("fly");
-    let cert_path = dir.join("cert.pem");
-    let key_path = dir.join("cert-key.pem");
-    if !(cert_path.exists() && key_path.exists()) {
-        if !dir.exists() {
-            fs::create_dir_all(&dir)?
-        }
-        println!("{}", cert_path.to_str().unwrap());
-        let mut params = CertificateParams::default();
-        let mut bytes: [u8; 8] = [0; 8];
-        ring::rand::SystemRandom::new().fill(&mut bytes)?;
-        params.serial_number = Some(u64::from_ne_bytes(bytes));
-        let cert = Certificate::from_params(params);
-        fs::File::create(&cert_path)?
-            .write_all(cert.serialize_pem().as_bytes())?;
-        write_secret(&key_path, cert.serialize_private_key_pem().as_bytes())?;
-    }
-    Ok(CertPair{cert_path, key_path})
-}
-
-fn error(err: String) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, err)
-}
-
-fn run_server(cert_pair: &CertPair) -> io::Result<()> {
+fn run_server(cert_pair: &CertPair) -> Try {
     // First parameter is port number (optional, defaults to 1337)
     let port = match env::args().nth(1) {
         Some(ref p) => p.to_owned(),
@@ -160,42 +103,4 @@ fn echo(req: Request<Body>) -> ResponseFuture {
         }
     };
     Box::new(future::ok(response))
-}
-
-// Load public certificate from file.
-fn load_certs<P: AsRef<Path>>(filename: P)
-    -> io::Result<Vec<rustls::Certificate>>
-{
-    // Open certificate file.
-    let certfile = fs::File::open(&filename).map_err(|e| {
-        error(format!(
-            "failed to open {}: {}", filename.as_ref().to_str().unwrap(), e,
-        ))
-    })?;
-    let mut reader = io::BufReader::new(certfile);
-
-    // Load and return certificate.
-    pemfile::certs(&mut reader)
-        .map_err(|_| error("failed to load certificate".into()))
-}
-
-// Load private key from file.
-fn load_private_key<P: AsRef<Path>>(filename: P)
-    -> io::Result<rustls::PrivateKey>
-{
-    // Open keyfile.
-    let keyfile = fs::File::open(&filename).map_err(|e| {
-        error(format!(
-            "failed to open {}: {}", filename.as_ref().to_str().unwrap(), e,
-        ))
-    })?;
-    let mut reader = io::BufReader::new(keyfile);
-
-    // Load and return a single private key.
-    let keys = pemfile::pkcs8_private_keys(&mut reader)
-        .map_err(|_| error("failed to load private key".into()))?;
-    if keys.len() != 1 {
-        return Err(error("expected a single private key".into()));
-    }
-    Ok(keys[0].clone())
 }
