@@ -31,7 +31,7 @@ fn run_server(cert_pair: &CertPair) -> Try {
         Some(ref p) => p.to_owned(),
         None => "1337".to_owned(),
     };
-    let addr = format!("127.0.0.1:{}", port)
+    let addr = format!("0.0.0.0:{}", port)
         .parse()
         .map_err(|e| error(format!("{}", e)))?;
 
