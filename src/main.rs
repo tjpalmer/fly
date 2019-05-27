@@ -16,7 +16,7 @@ use std::{env, io, sync};
 use tokio_rustls::TlsAcceptor;
 
 fn main() -> Try {
-    let cert_pair = create_certs()?;
+    let cert_pair = get_certs()?;
     // Serve an echo service over HTTPS, with proper error handling.
     if let Err(e) = run_server(&cert_pair) {
         eprintln!("FAILED: {}", e);
@@ -38,14 +38,10 @@ fn run_server(cert_pair: &CertPair) -> Try {
     // Build TLS configuration.
     // TODO How to make certs?
     let tls_cfg = {
-        // Load public certificate.
-        let certs = load_certs(&cert_pair.cert_path)?;
-        // Load private key.
-        let key = load_private_key(&cert_pair.key_path)?;
         // Do not use client certificate authentication.
         let mut cfg = rustls::ServerConfig::new(rustls::NoClientAuth::new());
         // Select a certificate to use.
-        cfg.set_single_cert(certs, key)
+        cfg.set_single_cert(cert_pair.certs.clone(), cert_pair.key.clone())
             .map_err(|e| error(format!("{}", e)))?;
         sync::Arc::new(cfg)
     };

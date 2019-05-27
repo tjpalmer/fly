@@ -1,5 +1,5 @@
 use crate::fly::*;
-use std::{fs, io, path::{Path, PathBuf}};
+use std::{fs, io, path::Path};
 use rcgen::{Certificate, CertificateParams};
 use ring::rand::SecureRandom;
 use rustls::internal::pemfile;
@@ -9,11 +9,11 @@ use std::io::prelude::*;
 use std::os::unix::fs::{OpenOptionsExt};
 
 pub struct CertPair {
-    pub cert_path: PathBuf,
-    pub key_path: PathBuf,
+    pub certs: Vec<rustls::Certificate>,
+    pub key: rustls::PrivateKey,
 }
 
-pub fn create_certs() -> Try<CertPair> {
+pub fn get_certs() -> Try<CertPair> {
     let dir = dirs::data_local_dir().unwrap().join("fly");
     let cert_path = dir.join("cert.pem");
     let key_path = dir.join("cert-key.pem");
@@ -26,16 +26,20 @@ pub fn create_certs() -> Try<CertPair> {
         let mut bytes: [u8; 8] = [0; 8];
         ring::rand::SystemRandom::new().fill(&mut bytes)?;
         params.serial_number = Some(u64::from_ne_bytes(bytes));
-        let cert = Certificate::from_params(params);
+        let gen_cert = Certificate::from_params(params);
         fs::File::create(&cert_path)?
-            .write_all(cert.serialize_pem().as_bytes())?;
-        write_secret(&key_path, cert.serialize_private_key_pem().as_bytes())?;
+            .write_all(gen_cert.serialize_pem().as_bytes())?;
+        write_secret(
+            &key_path, gen_cert.serialize_private_key_pem().as_bytes(),
+        )?;
     }
-    Ok(CertPair{cert_path, key_path})
+    Ok(CertPair{
+        certs: load_certs(cert_path)?, key: load_private_key(key_path)?,
+    })
 }
 
 // Load public certificate from file.
-pub fn load_certs<P: AsRef<Path>>(filename: P) -> Try<Vec<rustls::Certificate>>
+fn load_certs<P: AsRef<Path>>(filename: P) -> Try<Vec<rustls::Certificate>>
 {
     // Open certificate file.
     let certfile = fs::File::open(&filename).map_err(|e| {
@@ -51,7 +55,7 @@ pub fn load_certs<P: AsRef<Path>>(filename: P) -> Try<Vec<rustls::Certificate>>
 }
 
 // Load private key from file.
-pub fn load_private_key<P: AsRef<Path>>(filename: P) -> Try<rustls::PrivateKey>
+fn load_private_key<P: AsRef<Path>>(filename: P) -> Try<rustls::PrivateKey>
 {
     // Open keyfile.
     let keyfile = fs::File::open(&filename).map_err(|e| {
