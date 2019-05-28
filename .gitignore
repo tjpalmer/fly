@@ -1,10 +1,4 @@
 /fly
 /fly.exe
 /notes/
-
-#Added by cargo
-#
-#already existing elements are commented out
-
-/target
-**/*.rs.bk
+/target/
