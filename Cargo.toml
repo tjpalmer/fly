@@ -5,6 +5,7 @@ authors = ["Tom Palmer <tjpalmer@tjpalmer.com>"]
 edition = "2018"
 
 [dependencies]
+clap = "2.33.0"
 dirs = "1.0.5"
 failure = "0.1.5"
 futures = "0.1.27"

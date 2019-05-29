@@ -4,15 +4,11 @@ use hyper::{
     Body, Method, Request, Response, Server, StatusCode,
     rt::Future, service::service_fn,
 };
-use std::{env, io, sync};
+use std::{io, sync};
 use tokio_rustls::TlsAcceptor;
 
 pub fn run_server(cert_pair: &CertPair) -> Try {
-    // First parameter is port number (optional, defaults to 1337)
-    let port = match env::args().nth(1) {
-        Some(ref p) => p.to_owned(),
-        None => "1337".to_owned(),
-    };
+    let port = "1337";
     let addr = format!("0.0.0.0:{}", port)
         .parse()
         .map_err(|e| error(format!("{}", e)))?;
