@@ -3,9 +3,11 @@ package cmd
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/big"
 	"net/http"
@@ -30,7 +32,31 @@ func init() {
 var joinCmd = &cobra.Command{
 	Use: "join",
 	Run: func(cmd *cobra.Command, args []string) {
-		join()
+		if len(args) == 0 {
+			join()
+		} else {
+			fmt.Println(args)
+			client := &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						// TODO Verify our own chain.
+						InsecureSkipVerify: true,
+						// RootCAs: ,
+					},
+				},
+			}
+			uri := fmt.Sprintf("https://%s:8443", args[0])
+			response, err := client.Get(uri)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer response.Body.Close()
+			body, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("%s", body)
+		}
 	},
 }
 
