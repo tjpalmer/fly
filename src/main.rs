@@ -5,16 +5,27 @@ mod err;
 mod fly;
 mod serve;
 
-use clap::{App, SubCommand};
+use clap::{App, Arg, SubCommand};
 use fly::*;
 
 fn main() -> Try {
     let mut app = App::new("fly")
-        .subcommand(SubCommand::with_name("join"));
+        .subcommand(
+            SubCommand::with_name("join")
+            .arg(Arg::with_name("nodes").multiple(true)));
     let matches = app.clone().get_matches();
     match matches.subcommand() {
-        ("join", Some(_sub_matches)) => {
-            run()
+        ("join", Some(sub_matches)) => {
+            if let Some(nodes) = sub_matches.values_of_lossy("nodes") {
+                dbg!(&nodes);
+                if nodes.len() > 0 {
+                    let uri = format!("https://{}:1337", nodes[0]);
+                    let _response = reqwest::get(&uri)?;
+                }
+                Ok(())
+            } else {
+                run()
+            }
         }
         _ => {
             app.print_help()?;

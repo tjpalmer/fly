@@ -14,6 +14,7 @@ pub struct CertPair {
 }
 
 pub fn get_certs() -> Try<CertPair> {
+    // TODO Change to config dir?
     let dir = dirs::data_local_dir().unwrap().join("fly");
     let cert_path = dir.join("cert.pem");
     let key_path = dir.join("cert-key.pem");
