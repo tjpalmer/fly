@@ -1,6 +1,7 @@
 #![deny(warnings)]
 
 mod cert;
+mod fetch;
 mod err;
 mod fly;
 mod serve;
@@ -20,7 +21,7 @@ fn main() -> Try {
                 dbg!(&nodes);
                 if nodes.len() > 0 {
                     let uri = format!("https://{}:1337", nodes[0]);
-                    let _response = reqwest::get(&uri)?;
+                    fetch(&uri)?;
                 }
                 Ok(())
             } else {

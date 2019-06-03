@@ -48,7 +48,7 @@ pub fn run_server(cert_pair: &CertPair) -> Try {
 
     // Run the future, keep going until an error occurs.
     println!("Starting to serve on https://{}.", addr);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new()?;
     rt.block_on_all(fut)
         .map_err(|e| error(format!("{}", e)))?;
     Ok(())
