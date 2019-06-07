@@ -1,10 +1,11 @@
 #![deny(warnings)]
 
 mod cert;
-mod fetch;
 mod err;
+mod fetch;
 mod fly;
 mod serve;
+mod spread;
 
 use clap::{App, Arg, SubCommand};
 use fly::*;
@@ -13,7 +14,11 @@ fn main() -> Try {
     let mut app = App::new("fly")
         .subcommand(
             SubCommand::with_name("join")
-            .arg(Arg::with_name("nodes").multiple(true)));
+            .arg(Arg::with_name("nodes").multiple(true)))
+        .subcommand(
+            SubCommand::with_name("spread")
+            .arg(Arg::with_name("nodes").multiple(true).required(true)))
+        ;
     let matches = app.clone().get_matches();
     match matches.subcommand() {
         ("join", Some(sub_matches)) => {
@@ -27,6 +32,15 @@ fn main() -> Try {
             } else {
                 run()
             }
+        }
+        ("spread", Some(sub_matches)) => {
+            // TODO This command might go away and be reorged after testing.
+            // TODO Others, too, I guess ...
+            let nodes = sub_matches.values_of_lossy("nodes").unwrap();
+            for node in &nodes {
+                spread(&node)?;
+            }
+            Ok(())
         }
         _ => {
             app.print_help()?;
