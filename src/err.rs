@@ -21,6 +21,6 @@ impl std::error::Error for MessageError {
 
 pub type Try<Value = ()> = Result<Value, Error>;
 
-pub fn error(message: String) -> Error {
-    Error::from(MessageError{message})
+pub fn error<S: Into<String>>(message: S) -> Error {
+    Error::from(MessageError{message: message.into()})
 }

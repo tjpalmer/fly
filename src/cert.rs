@@ -57,33 +57,25 @@ pub fn get_certs() -> Try<CertPair> {
 // Load public certificate from file.
 fn load_certs<P: AsRef<Path>>(filename: P) -> Try<Vec<rustls::Certificate>> {
     // Open certificate file.
-    let certfile = fs::File::open(&filename).map_err(|e| {
-        error(format!(
-            "failed to open {}: {}", filename.as_ref().to_str().unwrap(), e,
-        ))
-    })?;
+    let certfile = fs::File::open(&filename)?;
     let mut reader = io::BufReader::new(certfile);
 
     // Load and return certificate.
     pemfile::certs(&mut reader)
-        .map_err(|_| error("failed to load certificate".into()))
+        .map_err(|_| error("failed to load certificate"))
 }
 
 // Load private key from file.
 fn load_private_key<P: AsRef<Path>>(filename: P) -> Try<rustls::PrivateKey> {
     // Open keyfile.
-    let keyfile = fs::File::open(&filename).map_err(|e| {
-        error(format!(
-            "failed to open {}: {}", filename.as_ref().to_str().unwrap(), e,
-        ))
-    })?;
+    let keyfile = fs::File::open(&filename)?;
     let mut reader = io::BufReader::new(keyfile);
 
     // Load and return a single private key.
     let keys = pemfile::pkcs8_private_keys(&mut reader)
-        .map_err(|_| error("failed to load private key".into()))?;
+        .map_err(|_| error("failed to load private key"))?;
     if keys.len() != 1 {
-        return Err(error("expected a single private key".into()));
+        return Err(error("expected a single private key"));
     }
     Ok(keys[0].clone())
 }
@@ -91,7 +83,7 @@ fn load_private_key<P: AsRef<Path>>(filename: P) -> Try<rustls::PrivateKey> {
 fn make_certs<P: AsRef<Path>>(cert_paths: &CertPaths<P>) -> Try {
     // Example of ca root here:
     // https://github.com/est31/rcgen/blob/a3a3d753fec8ab987fecd13540ecbf251850f43f/tests/webpki.rs#L130
-    // TODO How to create, use, and save a ca root?
+    // TODO Use ca cert for checking later.
     // CA cert.
     let mut ca_params = CertificateParams::default();
     ca_params.distinguished_name = DistinguishedName::new();
@@ -111,7 +103,7 @@ fn make_certs<P: AsRef<Path>>(cert_paths: &CertPaths<P>) -> Try {
     // Derived cert.
     let mut params = CertificateParams::default();
     params.distinguished_name = DistinguishedName::new();
-    // TODO Append id to name?
+    // TODO Also, subject alt name, and use actual node/host names?
     params.distinguished_name.push(DnType::CommonName, "fly node");
     rand_serial(&mut params)?;
     let gen_cert = Certificate::from_params(params);
