@@ -7,7 +7,9 @@ pub fn spread(host: &str) -> Try {
   let output = Command::new("ssh").args(&[host, "ls", "-lh"]).output()?;
   // let output = Command::new("ssh").output()?;
   // let output = Command::new("dir").output()?;
+  // let output = Command::new("rustc").output()?;
   let stdout = str::from_utf8(&output.stdout)?;
   println!("{}", stdout);
+  println!("{}", str::from_utf8(&output.stderr)?);
   Ok(())
 }

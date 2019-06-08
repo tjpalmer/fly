@@ -36,6 +36,7 @@ fn main() -> Try {
         ("spread", Some(sub_matches)) => {
             // TODO This command might go away and be reorged after testing.
             // TODO Others, too, I guess ...
+            // We can unwrap because required above.
             let nodes = sub_matches.values_of_lossy("nodes").unwrap();
             for node in &nodes {
                 spread(&node)?;
