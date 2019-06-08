@@ -14,7 +14,6 @@ pub fn run_server(cert_pair: &CertPair) -> Try {
         .map_err(|e| error(format!("{}", e)))?;
 
     // Build TLS configuration.
-    // TODO How to make certs?
     let tls_cfg = {
         // Do not use client certificate authentication.
         let mut cfg = rustls::ServerConfig::new(rustls::NoClientAuth::new());

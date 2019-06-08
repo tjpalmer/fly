@@ -5,6 +5,7 @@ authors = ["Tom Palmer <tjpalmer@tjpalmer.com>"]
 edition = "2018"
 
 [dependencies]
+actix-web = "1.0.0"
 clap = "2.33.0"
 dirs = "1.0.5"
 failure = "0.1.5"
@@ -20,3 +21,10 @@ tokio-rustls = "0.9.3"
 tokio-tcp = "0.1.3"
 untrusted = "0.6.2"
 webpki = "0.19.1"
+
+[profile.release]
+opt-level = 'z'
+# Enable for slow small build.
+# lto = true
+# codegen-units = 1
+panic = 'abort'
