@@ -6,6 +6,7 @@ use rcgen::{
 };
 use ring::rand::SecureRandom;
 use rustls::internal::pemfile;
+use std::convert::TryInto;
 use std::io::prelude::*;
 use untrusted::Input;
 use webpki::{
@@ -20,34 +21,34 @@ pub struct CertPair {
     pub key: rustls::PrivateKey,
 }
 
-struct CertPaths<P: AsRef<Path>> {
-    ca_cert_path: P,
-    ca_key_path: P,
+struct CertPathPair<P: AsRef<Path>> {
     cert_path: P,
     key_path: P,
 }
 
-pub fn get_certs() -> Try<CertPair> {
+pub fn get_certs(name: &str, signer: Option<&CertPair>) -> Try<CertPair> {
     // TODO Change to config dir?
     let dir = dirs::data_local_dir().unwrap().join("fly");
-    let ca_cert_path = dir.join("ca-cert.pem");
-    let ca_key_path = dir.join("ca-key.pem");
-    let cert_path = dir.join("node-cert.pem");
-    let key_path = dir.join("node-key.pem");
-    if !(
-        ca_cert_path.exists() && ca_key_path.exists() &&
-        cert_path.exists() && key_path.exists()
-    ) {
+    let cert_path = dir.join(format!("{}-cert.pem", name));
+    let key_path = dir.join(format!("{}-key.pem", name));
+    if !(cert_path.exists() && key_path.exists()) {
         if !dir.exists() {
             fs::create_dir_all(&dir)?
         }
         println!("{}", cert_path.to_str().unwrap());
-        make_certs(&CertPaths {
-            ca_cert_path: &ca_cert_path,
-            ca_key_path: &ca_key_path,
-            cert_path: &cert_path,
-            key_path: &key_path,
-        })?;
+        match signer {
+            Some(parent) => make_node_cert(
+                &parent,
+                &CertPathPair {
+                    cert_path: &cert_path,
+                    key_path: &key_path,
+                }
+            )?,
+            None => make_ca_cert(&CertPathPair {
+                cert_path: &cert_path,
+                key_path: &key_path,
+            })?,
+        }
     }
     Ok(CertPair{
         certs: load_certs(cert_path)?, key: load_private_key(key_path)?,
@@ -80,7 +81,7 @@ fn load_private_key<P: AsRef<Path>>(filename: P) -> Try<rustls::PrivateKey> {
     Ok(keys[0].clone())
 }
 
-fn make_certs<P: AsRef<Path>>(cert_paths: &CertPaths<P>) -> Try {
+fn make_ca_cert<P: AsRef<Path>>(ca_cert_paths: &CertPathPair<P>) -> Try {
     // Example of ca root here:
     // https://github.com/est31/rcgen/blob/a3a3d753fec8ab987fecd13540ecbf251850f43f/tests/webpki.rs#L130
     // TODO Use ca cert for checking later.
@@ -90,25 +91,40 @@ fn make_certs<P: AsRef<Path>>(cert_paths: &CertPaths<P>) -> Try {
     ca_params.distinguished_name.push(DnType::CommonName, "fly ca");
     ca_params.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
     rand_serial(&mut ca_params)?;
-    let ca_cert = Certificate::from_params(ca_params);
-    fs::File::create(&cert_paths.ca_cert_path)?
-        .write_all(ca_cert.serialize_pem().as_bytes())?;
+    let ca_cert = Certificate::from_params(ca_params)?;
+    fs::File::create(&ca_cert_paths.cert_path)?
+        .write_all(ca_cert.serialize_pem()?.as_bytes())?;
     write_secret(
-        &cert_paths.ca_key_path, ca_cert.serialize_private_key_pem().as_bytes(),
+        &ca_cert_paths.key_path, ca_cert.serialize_private_key_pem().as_bytes(),
     )?;
     // Prep for checking cert. TODO Probably elsewhere.
-    let ca_der = ca_cert.serialize_der();
+    let ca_der = ca_cert.serialize_der()?;
     let trust_anchor_list = &[cert_der_as_trust_anchor(Input::from(&ca_der))?];
     let _trust_anchors = TLSServerTrustAnchors(trust_anchor_list);
+    // Done.
+    Ok(())
+}
+
+fn make_node_cert<P: AsRef<Path>>(
+    ca_cert: &CertPair, cert_paths: &CertPathPair<P>,
+) -> Try {
+    let _ca_cert_bytes = &ca_cert.certs[0].0;
+    let _ca_key_bytes = &ca_cert.key.0;
+    let ca_key_pair = _ca_key_bytes.as_slice().try_into()?;
+    let ca_cert_params = CertificateParams::from_ca_cert_der(
+        _ca_cert_bytes.as_slice(), ca_key_pair,
+    )?;
+    let ca_cert_obj = Certificate::from_params(ca_cert_params)?;
     // Derived cert.
     let mut params = CertificateParams::default();
     params.distinguished_name = DistinguishedName::new();
     // TODO Also, subject alt name, and use actual node/host names?
     params.distinguished_name.push(DnType::CommonName, "fly node");
     rand_serial(&mut params)?;
-    let gen_cert = Certificate::from_params(params);
-    fs::File::create(&cert_paths.cert_path)?
-        .write_all(gen_cert.serialize_pem_with_signer(&ca_cert).as_bytes())?;
+    let gen_cert = Certificate::from_params(params)?;
+    fs::File::create(&cert_paths.cert_path)?.write_all(
+        gen_cert.serialize_pem_with_signer(&ca_cert_obj)?.as_bytes(),
+    )?;
     write_secret(
         &cert_paths.key_path, gen_cert.serialize_private_key_pem().as_bytes(),
     )?;

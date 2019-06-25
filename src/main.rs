@@ -52,7 +52,8 @@ fn main() -> Try {
 }
 
 fn run() -> Try {
-    let cert_pair = get_certs()?;
+    let ca_cert_pair = get_certs("ca", None)?;
+    let cert_pair = get_certs("node", Some(&ca_cert_pair))?;
     if let Err(e) = run_server(&cert_pair) {
         eprintln!("FAILED: {}", e);
         std::process::exit(1);

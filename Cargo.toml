@@ -12,7 +12,7 @@ failure = "0.1.5"
 futures = "0.1.27"
 hyper = "0.12.29"
 hyper-rustls = "0.16.1"
-rcgen = "0.3.0"
+rcgen = {features = ["x509-parser"], version = "0.4.0"}
 ring = "0.14.6"
 # TODO Don't do anything insecure.
 rustls = {features = ["dangerous_configuration"], version = "0.15.2"}
